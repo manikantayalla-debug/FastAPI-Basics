@@ -26,3 +26,12 @@ def create_student(student: StudentCreate):
         "message" : "Student received Sucessfully!",
         "student" : student
     }
+
+#Assignment 1
+@app.get("/about",status_code=200)
+def get_about():
+    return{
+        "project" : "Student API",
+        "version" : "1.0",
+        "created_by" : "Manikanta Yalla"
+    }
