@@ -35,3 +35,15 @@ def get_about():
         "version" : "1.0",
         "created_by" : "Manikanta Yalla"
     }
+
+#Assignment 2
+@app.get("/courses",status_code=200)
+def get_courses():
+    return {
+            "courses" : [
+                "Pythton",
+                "DBMS",
+                "Computer Networkds",
+                "Data Structures"
+            ]
+    }
