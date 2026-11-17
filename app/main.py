@@ -1,122 +1,171 @@
-from fastapi import FastAPI
-from pydantic import BaseModel,Field
+
+from fastapi import FastAPI, Depends, HTTPException, Response
+from sqlalchemy.orm import Session
+
+from app.database import Base, engine, get_db
+from app.models import Student
+from app.schemas import StudentCreate, StudentResponse, UpdateDivision
+
 
 app = FastAPI(title="Student API")
 
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
+
+# HOME
 @app.get("/")
 def home():
     return {
-        "message" : "Welcome to Student API"
+        "message": "Welcome to Student API"
     }
 
-class StudentCreate(BaseModel):
-    name : str = Field(min_length=2,max_length=100)
-    division : str
 
+# HEALTH CHECK
 @app.get("/health")
 def health_check():
     return {
-        "status" : "ok",
-        "service" : "student-api"
+        "status": "ok",
+        "service": "student-api"
     }
 
-@app.post("/students",status_code=201)
-def create_student(student: StudentCreate):
-    return {
-        "message" : "Student received Sucessfully!",
-        "student" : student
-    }
 
-#Assignment 1
-@app.get("/about",status_code=200)
+# ASSIGNMENT 1: ABOUT
+@app.get("/about", status_code=200)
 def get_about():
-    return{
-        "project" : "Student API",
-        "version" : "1.0",
-        "created_by" : "Manikanta Yalla"
+    return {
+        "project": "Student API",
+        "version": "1.0",
+        "created_by": "Manikanta Yalla"
     }
 
-#Assignment 2
-@app.get("/courses",status_code=200)
+
+# ASSIGNMENT 2: COURSES
+@app.get("/courses", status_code=200)
 def get_courses():
     return {
-            "courses" : [
-                "Pythton",
-                "DBMS",
-                "Computer Networkds",
-                "Data Structures"
-            ]
+        "courses": [
+            "Python",
+            "DBMS",
+            "Computer Networks",
+            "Data Structures"
+        ]
     }
 
-#Assignment 3
-"""The key value pair must match name of the attribute in BaseModel as well as pass its validation test cases. If either one of them isn't passed it will throw error 422 Unprocessable Content"""
 
-#Assignment 4
-
-class Student(BaseModel):
-    roll_no :int = Field(gt=0)
-    name : str = Field(min_length=2, max_length=100)
-    division : str = Field(min_length=1)
+# ASSIGNMENT 3:
+# Pydantic validates incoming request data.
+# Invalid data returns 422 Unprocessable Entity.
 
 
-students = [{"roll_no" : 101, "name" : "Manikanta", "division" : "B"}]
+# ASSIGNMENT 4: CRUD OPERATIONS
 
-#Q1
-@app.get("/students",status_code=200)
-def get_students():
-    return{
-        "Students" : students
-    }
 
-#Q2
-@app.get("/student/{roll_no}",status_code=200)
-def get_student(roll_no: int):
-    student = None
-    for s in students:
-        if s["roll_no"] == roll_no:
-            student = s
-            break
-    
+# Q1: GET ALL STUDENTS
+@app.get("/students", response_model=list[StudentResponse])
+def get_students(db: Session = Depends(get_db)):
+
+    students = db.query(Student).all()
+
+    return students
+
+
+# Q2: GET STUDENT BY ROLL NUMBER
+@app.get("/student/{roll_no}", response_model=StudentResponse)
+def get_student(roll_no: int, db: Session = Depends(get_db)):
+
+    student = db.query(Student).filter(
+        Student.roll_no == roll_no
+    ).first()
+
+    if student is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Student not found"
+        )
+
+    return student
+
+
+# Q3: CREATE STUDENT
+@app.post(
+    "/student/",
+    status_code=201,
+    response_model=StudentResponse
+)
+def create_student(
+    student: StudentCreate,
+    db: Session = Depends(get_db)
+):
+
+    # Check whether roll number already exists
+    existing_student = db.query(Student).filter(
+        Student.roll_no == student.roll_no
+    ).first()
+
+    if existing_student:
+        raise HTTPException(
+            status_code=409,
+            detail="Roll number already exists"
+        )
+
+    new_student = Student(**student.model_dump())
+
+    db.add(new_student)
+    db.commit()
+    db.refresh(new_student)
+
+    return new_student
+
+
+# Q4: UPDATE STUDENT DIVISION
+@app.patch("/students/{roll_no}", status_code=200)
+def update_division(
+    roll_no: int,
+    update: UpdateDivision,
+    db: Session = Depends(get_db)
+):
+
+    student = db.query(Student).filter(
+        Student.roll_no == roll_no
+    ).first()
+
+    if student is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Student not found"
+        )
+
+    student.division = update.division
+
+    db.commit()
+    db.refresh(student)
 
     return {
-        "Student" : student
-    }
-
-#Q3
-@app.post("/student/",status_code=201)
-def create_student(student : Student):
-    students.append(student.model_dump())
-    return {
-        "message" : "Student received Successfully!",
-        "Student" : student
+        "message": "Division updated successfully!",
+        "Student": student
     }
 
 
-#Q4
+# Q5: DELETE STUDENT
+@app.delete("/student/{roll_no}", status_code=204)
+def delete_student(
+    roll_no: int,
+    db: Session = Depends(get_db)
+):
 
-class UpdateDivision(BaseModel):
-    division : str = Field(min_length=1)
+    student = db.query(Student).filter(
+        Student.roll_no == roll_no
+    ).first()
 
-@app.patch("/students/{roll_no}",status_code=200)
-def update_division(roll_no : int, update : UpdateDivision):
+    if student is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Student not found"
+        )
 
-    for student in students:
-        if student["roll_no"] == roll_no:
-            student["division"] = update.division
+    db.delete(student)
+    db.commit()
 
-            return {
-                "message" : "Division Updated Sucessfully!",
-                "Student" : student
-            }
-
-    return{ "message" : "Student not found!"
-    }
-
-#Q5
-@app.delete("/student/{roll_no}",status_code=204)
-def delete_student(roll_no : int):
-
-    for i,student in enumerate(students):
-        if student["roll_no"] == roll_no:
-            students.pop(i)
-            return
+    return Response(status_code=204)
